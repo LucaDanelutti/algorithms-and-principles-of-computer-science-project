@@ -3,9 +3,9 @@
 #include <string.h>
 
 #define REL_HASH_SIZE 2
-#define REL_ID_SIZE 100
-#define ENT_ID_SIZE 100
-#define LINE_SIZE 1000
+#define REL_ID_SIZE 20
+#define ENT_ID_SIZE 20
+#define LINE_SIZE 100
 
 struct rb_node *ent_rb = NULL;
 struct rb_node *rel_rb = NULL;
@@ -636,10 +636,56 @@ void rb_destroy_REPORT(struct rb_node_REPORT *root)
     free(root);
 }
 
-void add_rel(char *relID, char *entID1, char *entID2)
+void print_max(struct rb_node_DEST *root, int max)
+{
+    if (root == NULL)
+        return;
+    print_max(root->left, max);
+    if (root->count == max)
+    {
+        fputs("\"", stdout);
+        fputs(root->key, stdout);
+        fputs("\" ", stdout);
+    }
+    print_max(root->right, max);
+}
+
+void report_recursive2(struct rb_node *rel_rb)
+{
+    int max;
+    struct rb_node_DEST **node;
+    if (rel_rb == NULL)
+        return;
+    report_recursive2(rel_rb->left);
+    node = hashtable_search(rel_hashtable, rel_rb->key);
+    max = *hashtable_max_search(rel_hashtable, rel_rb->key);
+    if (node != NULL)
+    {
+        fputs("\"", stdout);
+        fputs(rel_rb->key, stdout);
+        fputs("\" ", stdout);
+        print_max(*node, max);
+        printf("%d", max);
+        fputs("; ", stdout);
+    }
+    report_recursive2(rel_rb->right);
+    return;
+}
+
+void addent(char *entID)
+{
+    //printf("Adding ent %s\n", entID);
+    if (rb_search(ent_rb, entID) == NULL)
+        rb_insert(&ent_rb, entID);
+}
+
+void addrel(char *relID, char *entID1, char *entID2)
 {
     if (rb_search(ent_rb, entID1) == NULL || rb_search(ent_rb, entID2) == NULL)
+    {
+        //printf("Relationship %s between %s and %s not added!", relID, entID1, entID2);
         return;
+    }
     //printf("Adding relationship %s between %s and %s\n", relID, entID1, entID2);
     struct rb_node_DEST **buffer;
     struct rb_node_DEST *buffer2;
@@ -665,104 +711,8 @@ void add_rel(char *relID, char *entID1, char *entID2)
     return;
 }
 
-void print_max(struct rb_node_DEST *root, int max)
-{
-    if (root == NULL)
-        return;
-    print_max(root->left, max);
-    if (root->count == max)
-    {
-        fputs("\"", stdout);
-        fputs(root->key, stdout);
-        fputs("\"", stdout);
-    }
-    print_max(root->right, max);
-}
-
-void build_report_rb(struct rb_node_DEST *root, int max)
-{
-    if (root == NULL)
-        return;
-    build_report_rb(root->right, max);
-    if (root->count > max)
-        max = root->count;
-    if (root->count >= max)
-        rb_insert_REPORT(&report_rb, root->count, root->key);
-    //printf("Insert %s", root->key);
-    build_report_rb(root->left, max);
-}
-
-int print_max_report_rb(struct rb_node_REPORT *root)
-{
-    int max;
-    if (root->right == NULL)
-    {
-        fputs("\"", stdout);
-        fputs(root->dest, stdout);
-        fputs("\"", stdout);
-        return root->key;
-    }
-    max = print_max_report_rb(root->right);
-    if (max == root->key)
-    {
-        fputs(" \"", stdout);
-        fputs(root->dest, stdout);
-        fputs("\"", stdout);
-    }
-    return max;
-}
-
-void report_recursive(struct rb_node *rel_rb)
-{
-    struct rb_node_DEST **node;
-    int max = 0;
-    if (rel_rb == NULL)
-        return;
-    report_recursive(rel_rb->left);
-    node = hashtable_search(rel_hashtable, rel_rb->key);
-    if (node != NULL)
-    {
-        build_report_rb(*node, 0);
-        fputs("\"", stdout);
-        fputs(rel_rb->key, stdout);
-        fputs("\" ", stdout);
-        max = print_max_report_rb(report_rb);
-        fputs(" ", stdout);
-        printf("%d", max);
-        fputs("; ", stdout);
-        rb_destroy_REPORT(report_rb);
-        report_rb = NULL;
-    }
-    report_recursive(rel_rb->right);
-    return;
-}
-
-void report_recursive2(struct rb_node *rel_rb)
-{
-    int max;
-    struct rb_node_DEST **node;
-    if (rel_rb == NULL)
-        return;
-    report_recursive2(rel_rb->left);
-    node = hashtable_search(rel_hashtable, rel_rb->key);
-    max = *hashtable_max_search(rel_hashtable, rel_rb->key);
-    if (node != NULL)
-    {
-        fputs("\"", stdout);
-        fputs(rel_rb->key, stdout);
-        fputs("\" ", stdout);
-        print_max(*node, max);
-        fputs(" ", stdout);
-        printf("%d", max);
-        fputs("; ", stdout);
-    }
-    report_recursive2(rel_rb->right);
-    return;
-}
-
 void report()
 {
-    //rb_inorder(rel_rb);
     if (rel_rb == NULL)
     {
         fputs("none\n", stdout);
@@ -784,9 +734,7 @@ void lineParser(char *temp)
         punt = strtok(NULL, " ");
         punt = strtok(punt, "\"");
         strcpy(entID, punt);
-        //printf("Adding %s\n", entID);
-        if (rb_search(ent_rb, entID) == NULL)
-            rb_insert(&ent_rb, entID);
+        addent(entID);
     }
 
     if (strcmp(punt, "addrel") == 0)
@@ -802,7 +750,7 @@ void lineParser(char *temp)
         punt = strtok(NULL, "\"");
         punt = strtok(NULL, "\"");
         strcpy(relID, punt);
-        add_rel(relID, entID1, entID2);
+        addrel(relID, entID1, entID2);
     }
 
     if (strcmp(punt, "report\n") == 0)
@@ -814,9 +762,9 @@ void lineParser(char *temp)
 
 int main()
 {
-    freopen("suite/i/2019_08_09_15_06_15_549.txt", "r", stdin);
+    //freopen("generator_suite/i/2019_08_09_15_06_00_622.txt", "r", stdin);
     //freopen("suite1/batch1.1.in", "r", stdin);
-    freopen("output.txt", "w", stdout);
+    //freopen("output.txt", "w", stdout);
 
     rel_hashtable = hashtable_createTable(REL_HASH_SIZE);
 
