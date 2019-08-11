@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#define REL_HASH_SIZE 2
-#define REL_ID_SIZE 20 //Poni uguale a ENT_ID_SIZE
-#define ENT_ID_SIZE 20
+#define REL_HASH_SIZE 20
+#define REL_ID_SIZE 35 //Poni uguale a ENT_ID_SIZE
+#define ENT_ID_SIZE 35
 #define LINE_SIZE 100
 
 const int RED = 0;
@@ -15,7 +15,6 @@ typedef struct rb_node *rbTree;
 typedef struct rb_node_DEST *rbNode_DEST;
 typedef struct rb_node_DEST *rbTree_DEST;
 
-struct rb_node_REPORT *report_rb = NULL;
 struct hashtable *rel_hashtable = NULL;
 
 struct hashtable_node
@@ -275,7 +274,7 @@ void rb_insertFixUp(rbTree *tree, rbNode z)
     (*tree)->color = BLACK;
 }
 
-void rb_insert(rbTree *tree, char *k)
+int rb_insert(rbTree *tree, char *k)
 {
     rbNode y = NIL;
     rbNode x = *tree;
@@ -286,6 +285,8 @@ void rb_insert(rbTree *tree, char *k)
     while (x != NIL)
     {
         y = x;
+        if (strcmp(z->key, x->key) == 0)
+            return 0;
         if (strcmp(z->key, x->key) < 0)
         {
             x = x->left;
@@ -314,6 +315,7 @@ void rb_insert(rbTree *tree, char *k)
     z->left = z->right = NIL;
     z->color = RED;
     rb_insertFixUp(tree, z);
+    return 1;
 }
 
 void rb_removeFixUp(rbTree *tree, rbNode x)
@@ -434,6 +436,15 @@ rbNode rb_remove(rbTree *tree, rbNode z)
 void rb_freeNode(rbNode node)
 {
     free(node);
+}
+
+void rb_destroy(rbTree tree)
+{
+    if (tree == NIL)
+        return;
+    rb_destroy(tree->left);
+    rb_destroy(tree->right);
+    free(tree);
 }
 
 void rb_inOrder(rbTree tree)
@@ -763,6 +774,8 @@ rbNode_DEST rb_remove_DEST(rbTree_DEST *tree, rbNode_DEST z)
     if (y != z)
     {
         strcpy(z->key, y->key);
+        z->value = y->value;
+        z->count = y->count;
     }
     if (y->color == BLACK)
     {
@@ -771,13 +784,22 @@ rbNode_DEST rb_remove_DEST(rbTree_DEST *tree, rbNode_DEST z)
     return y;
 }
 
+void rb_destroy_DEST(rbTree_DEST tree)
+{
+    if (tree == NIL_DEST)
+        return;
+    rb_destroy_DEST(tree->left);
+    rb_destroy_DEST(tree->right);
+    free(tree);
+}
+
 void rb_inOrder_DEST(rbTree_DEST tree)
 {
     if (tree == NIL_DEST)
         return;
 
     rb_inOrder_DEST(tree->left);
-    printf("%s ", tree->key);
+    printf("### %s with %d ###", tree->key, tree->count);
     rb_inOrder_DEST(tree->right);
 }
 
@@ -787,7 +809,7 @@ int rb_findMax_DEST(rbTree_DEST tree)
     int left;
     int right;
     if (tree == NIL_DEST)
-        return 0;
+        return -1;
 
     left = rb_findMax_DEST(tree->left);
     right = rb_findMax_DEST(tree->right);
@@ -800,189 +822,12 @@ int rb_findMax_DEST(rbTree_DEST tree)
     return right;
 }
 
-struct rb_node_REPORT
-{
-    int key;
-    char dest[ENT_ID_SIZE];
-    char color;
-    struct rb_node_REPORT *left, *right, *parent;
-};
-
-void rb_leftRotate_REPORT(struct rb_node_REPORT **root, struct rb_node_REPORT *x)
-{
-    if (!x || !x->right)
-        return;
-    struct rb_node_REPORT *y = x->right;
-    x->right = y->left;
-    if (x->right != NULL)
-        x->right->parent = x;
-    y->parent = x->parent;
-    if (x->parent == NULL)
-        (*root) = y;
-    else if (x == x->parent->left)
-        x->parent->left = y;
-    else
-        x->parent->right = y;
-    y->left = x;
-    x->parent = y;
-}
-
-void rb_rightRotate_REPORT(struct rb_node_REPORT **root, struct rb_node_REPORT *y)
-{
-    if (!y || !y->left)
-        return;
-    struct rb_node_REPORT *x = y->left;
-    y->left = x->right;
-    if (x->right != NULL)
-        x->right->parent = y;
-    x->parent = y->parent;
-    if (x->parent == NULL)
-        (*root) = x;
-    else if (y == y->parent->left)
-        y->parent->left = x;
-    else
-        y->parent->right = x;
-    x->right = y;
-    y->parent = x;
-}
-
-void rb_insertFixUp_REPORT(struct rb_node_REPORT **root, struct rb_node_REPORT *z)
-{
-    while (z != *root && z != (*root)->left && z != (*root)->right && z->parent->color == 'R')
-    {
-        struct rb_node_REPORT *y;
-
-        if (z->parent && z->parent->parent && z->parent == z->parent->parent->left)
-            y = z->parent->parent->right;
-        else
-            y = z->parent->parent->left;
-
-        if (!y)
-            z = z->parent->parent;
-        else if (y->color == 'R')
-        {
-            y->color = 'B';
-            z->parent->color = 'B';
-            z->parent->parent->color = 'R';
-            z = z->parent->parent;
-        }
-
-        else
-        {
-            if (z->parent == z->parent->parent->left &&
-                z == z->parent->left)
-            {
-                char ch = z->parent->color;
-                z->parent->color = z->parent->parent->color;
-                z->parent->parent->color = ch;
-                rb_rightRotate_REPORT(root, z->parent->parent);
-            }
-
-            if (z->parent && z->parent->parent && z->parent == z->parent->parent->left &&
-                z == z->parent->right)
-            {
-                char ch = z->color;
-                z->color = z->parent->parent->color;
-                z->parent->parent->color = ch;
-                rb_leftRotate_REPORT(root, z->parent);
-                rb_rightRotate_REPORT(root, z->parent->parent);
-            }
-
-            if (z->parent && z->parent->parent &&
-                z->parent == z->parent->parent->right &&
-                z == z->parent->right)
-            {
-                char ch = z->parent->color;
-                z->parent->color = z->parent->parent->color;
-                z->parent->parent->color = ch;
-                rb_leftRotate_REPORT(root, z->parent->parent);
-            }
-
-            if (z->parent && z->parent->parent && z->parent == z->parent->parent->right &&
-                z == z->parent->left)
-            {
-                char ch = z->color;
-                z->color = z->parent->parent->color;
-                z->parent->parent->color = ch;
-                rb_rightRotate_REPORT(root, z->parent);
-                rb_leftRotate_REPORT(root, z->parent->parent);
-            }
-        }
-    }
-    (*root)->color = 'B';
-}
-
-void rb_insert_REPORT(struct rb_node_REPORT **root, int key, char *dest)
-{
-    struct rb_node_REPORT *z = (struct rb_node_REPORT *)malloc(sizeof(struct rb_node_REPORT));
-    z->key = key;
-    strcpy(z->dest, dest);
-    z->left = z->right = z->parent = NULL;
-
-    if (*root == NULL)
-    {
-        z->color = 'B';
-        (*root) = z;
-    }
-    else
-    {
-        struct rb_node_REPORT *y = NULL;
-        struct rb_node_REPORT *x = (*root);
-
-        while (x != NULL)
-        {
-            y = x;
-            if (z->key < x->key)
-                x = x->left;
-            else
-                x = x->right;
-        }
-        z->parent = y;
-        if (z->key >= y->key)
-            y->right = z;
-        else
-            y->left = z;
-        z->color = 'R';
-
-        rb_insertFixUp_REPORT(root, z);
-    }
-}
-
-struct rb_node_REPORT *rb_search_REPORT(struct rb_node_REPORT *root, int key)
-{
-    if (root == NULL)
-        return NULL;
-    if (root->key == key)
-        return root;
-    if (root->key > key)
-        return rb_search_REPORT(root->left, key);
-    else
-        return rb_search_REPORT(root->right, key);
-}
-
-void rb_inorder_REPORT(struct rb_node_REPORT *root)
-{
-    if (root == NULL)
-        return;
-    rb_inorder_REPORT(root->left);
-    printf("%d to %s; ", root->key, root->dest);
-    rb_inorder_REPORT(root->right);
-}
-
-void rb_destroy_REPORT(struct rb_node_REPORT *root)
-{
-    if (root == NULL)
-        return;
-    rb_destroy_REPORT(root->left);
-    rb_destroy_REPORT(root->right);
-    free(root);
-}
-
 void print_max(rbTree_DEST root, int max)
 {
     if (root == NULL)
         return;
     print_max(root->left, max);
+    //printf("# %d #", root->count);
     if (root->count == max)
     {
         fputs("\"", stdout);
@@ -1001,7 +846,7 @@ void report_recursive2(rbTree rel_rb)
     report_recursive2(rel_rb->left);
     node = hashtable_search(rel_hashtable, rel_rb->key);
     max = *hashtable_max_search(rel_hashtable, rel_rb->key);
-    if (node != NULL)
+    if (node != NULL && max > 0)
     {
         fputs("\"", stdout);
         fputs(rel_rb->key, stdout);
@@ -1031,25 +876,49 @@ void addrel(char *relID, char *entID1, char *entID2)
     //printf("Adding relationship %s between %s and %s\n", relID, entID1, entID2);
     rbTree_DEST *buffer;
     rbTree_DEST rel_dest_node;
+    int *hashtable_max;
     buffer = hashtable_search(rel_hashtable, relID);
     if (buffer == NULL)
     {
         buffer = malloc(sizeof(void *));
         *buffer = NIL_DEST;
         hashtable_insert(rel_hashtable, relID, buffer, 0);
-        rb_insert(&rel_rb, relID);
     }
+    rb_insert(&rel_rb, relID);
     rel_dest_node = rb_search_DEST(*buffer, entID2);
     if (rel_dest_node == NIL_DEST)
+    {
         rb_insert_DEST(buffer, entID2, NIL);
-    rel_dest_node = rb_search_DEST(*buffer, entID2);
-    if (rb_search(rel_dest_node->value, entID1) == NIL)
+        rel_dest_node = rb_search_DEST(*buffer, entID2);
+    }
+
+    //if (rb_search(rel_dest_node->value, entID1) == NIL)
+    //{
+    if (rb_insert(&(rel_dest_node->value), entID1) == 1)
     {
         rel_dest_node->count++;
-        rb_insert(&(rel_dest_node->value), entID1);
-        if (rel_dest_node->count > *hashtable_max_search(rel_hashtable, relID))
-            *hashtable_max_search(rel_hashtable, relID) = rel_dest_node->count;
+        hashtable_max = hashtable_max_search(rel_hashtable, relID);
+        if (rel_dest_node->count > *hashtable_max)
+            *hashtable_max = rel_dest_node->count;
     }
+    //}
+    return;
+}
+
+void delent_destTreeCleaner_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest_node)
+{
+    if (rel_dest_node == NIL_DEST)
+        return;
+    rbNode_DEST toFree;
+    if (rel_dest_node->count < 1)
+    {
+        toFree = rb_remove_DEST(rel_dest_tree, rel_dest_node);
+        free(toFree);
+        delent_destTreeCleaner_recursive(rel_dest_tree, *rel_dest_tree);
+        return;
+    }
+    delent_destTreeCleaner_recursive(rel_dest_tree, rel_dest_node->left);
+    delent_destTreeCleaner_recursive(rel_dest_tree, rel_dest_node->right);
     return;
 }
 
@@ -1058,6 +927,9 @@ void delrel(char *relID, char *entID1, char *entID2)
     //printf("Deleting relationship %s between %s and %s\n", relID, entID1, entID2);
     rbTree_DEST *rel_dest_tree;
     rbTree_DEST rel_dest_node;
+    if (rb_search(ent_rb, entID1) == NIL)
+        return;
+
     rel_dest_tree = hashtable_search(rel_hashtable, relID);
     if (rel_dest_tree == NULL)
     {
@@ -1085,14 +957,105 @@ void delrel(char *relID, char *entID1, char *entID2)
     rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
     free(toFree);
     int *hashtable_max = hashtable_max_search(rel_hashtable, relID);
-    rel_dest_node->count--;
+    (rel_dest_node->count)--;
+    if ((rel_dest_node->count + 1) == *hashtable_max)
+    {
+        *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+    }
     if (rel_dest_node->count == 0)
     {
         rbNode_DEST toFree_DEST = rb_remove_DEST(rel_dest_tree, rel_dest_node);
         free(toFree_DEST);
-    }
-    if ((rel_dest_node->count + 1) == *hashtable_max)
         *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+    }
+    if (*hashtable_max == -1)
+    {
+        rb_destroy_DEST(*rel_dest_tree);
+        *rel_dest_tree = NIL_DEST;
+    }
+    return;
+}
+
+void delent_relTreeCleaner_recursive(rbTree *rel_rb, rbNode rel_node)
+{
+    if (rel_node == NIL)
+        return;
+    rbNode toFree;
+    if (*hashtable_max_search(rel_hashtable, rel_node->key) < 1)
+    {
+        //printf("### Going to free: %s", rel_node->key);
+        toFree = rb_remove(rel_rb, rel_node);
+        free(toFree);
+        delent_relTreeCleaner_recursive(rel_rb, *rel_rb);
+        return;
+    }
+    delent_relTreeCleaner_recursive(rel_rb, rel_node->left);
+    delent_relTreeCleaner_recursive(rel_rb, rel_node->right);
+    return;
+}
+
+void delent_fromNodes_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest_node, char *entID, char *relID)
+{
+    if (rel_dest_node == NIL_DEST)
+        return;
+    delent_fromNodes_recursive(rel_dest_tree, rel_dest_node->left, entID, relID);
+
+    rbNode rel_from_node = rb_search(rel_dest_node->value, entID);
+    if (rel_from_node != NIL)
+    {
+        //printf("\nDeleting from %s to %s\n", rel_from_node->key, rel_dest_node->key);
+        rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
+        free(toFree);
+        int *hashtable_max = hashtable_max_search(rel_hashtable, relID);
+        rel_dest_node->count--;
+        if (((rel_dest_node->count) + 1) == *hashtable_max)
+            *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+    }
+
+    delent_fromNodes_recursive(rel_dest_tree, rel_dest_node->right, entID, relID);
+    return;
+}
+
+void delent_recursive(rbTree rel_rb, char *entID)
+{
+    rbTree_DEST *rel_dest_tree;
+    if (rel_rb == NIL)
+        return;
+    delent_recursive(rel_rb->left, entID);
+
+    rel_dest_tree = hashtable_search(rel_hashtable, rel_rb->key);
+    if (rel_dest_tree != NULL)
+    {
+        if (*rel_dest_tree != NIL_DEST)
+        {
+            delent_fromNodes_recursive(rel_dest_tree, *rel_dest_tree, entID, rel_rb->key);
+            if (*hashtable_max_search(rel_hashtable, rel_rb->key) == 0)
+            {
+                rb_destroy_DEST(*rel_dest_tree);
+                *rel_dest_tree = NIL_DEST;
+            }
+            else
+            {
+                rbNode_DEST rel_dest_node = rb_search_DEST(*rel_dest_tree, entID);
+                if (rel_dest_node != NIL_DEST)
+                {
+                    rb_destroy(rel_dest_node->value);
+                    rel_dest_node->value = NIL;
+                    int *hashtable_max = hashtable_max_search(rel_hashtable, rel_rb->key);
+                    //printf("\n###Deleting %s --RELDESTNODEVALUE: %d, HASHMAX: %d\n", entID, rel_dest_node->count, *hashtable_max);
+                    if ((rel_dest_node->count) == (*hashtable_max))
+                    {
+                        rel_dest_node->count = 0;
+                        *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+                    }
+                    rel_dest_node->count = 0;
+                }
+            }
+            //delent_destTreeCleaner_recursive(rel_dest_tree, *rel_dest_tree);
+        }
+    }
+
+    delent_recursive(rel_rb->right, entID);
     return;
 }
 
@@ -1102,10 +1065,14 @@ void delent(char *entID)
     rbNode ent_node = rb_search(ent_rb, entID);
     if (ent_node == NIL)
     {
+        //printf("Not deleting ent %s\n", entID);
         return;
     }
-    rb_remove(&ent_rb, ent_node);
+    rbNode toFree = rb_remove(&ent_rb, ent_node);
+    free(toFree);
+    delent_recursive(rel_rb, entID);
 
+    //delent_relTreeCleaner_recursive(&rel_rb, rel_rb);
     return;
 }
 
@@ -1116,7 +1083,6 @@ void report()
         fputs("none\n", stdout);
         return;
     }
-    //report_recursive(rel_rb);
     report_recursive2(rel_rb);
     fputs("\n", stdout);
 }
@@ -1128,57 +1094,67 @@ void lineParser(char *temp)
 
     if (strcmp(punt, "addent") == 0)
     {
-        char entID[ENT_ID_SIZE];
+        char *entID;
         punt = strtok(NULL, " ");
-        punt = strtok(punt, "\"");
-        strcpy(entID, punt);
+        entID = strtok(punt, "\"");
+        //strcpy(entID, punt);
         addent(entID);
     }
 
     if (strcmp(punt, "addrel") == 0)
     {
-        char entID1[ENT_ID_SIZE];
-        char entID2[ENT_ID_SIZE];
-        char relID[REL_ID_SIZE];
+        char *entID1;
+        char *entID2;
+        char *relID;
+        entID1 = strtok(NULL, "\"");
+        //strcpy(entID1, punt);
         punt = strtok(NULL, "\"");
-        strcpy(entID1, punt);
+        entID2 = strtok(NULL, "\"");
+        //strcpy(entID2, punt);
         punt = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        strcpy(entID2, punt);
-        punt = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        strcpy(relID, punt);
+        relID = strtok(NULL, "\"");
+        //strcpy(relID, punt);
         addrel(relID, entID1, entID2);
     }
 
     if (strcmp(punt, "delrel") == 0)
     {
-        char entID1[ENT_ID_SIZE];
-        char entID2[ENT_ID_SIZE];
-        char relID[REL_ID_SIZE];
+        char *entID1;
+        char *entID2;
+        char *relID;
+        entID1 = strtok(NULL, "\"");
+        //strcpy(entID1, punt);
         punt = strtok(NULL, "\"");
-        strcpy(entID1, punt);
+        entID2 = strtok(NULL, "\"");
+        //strcpy(entID2, punt);
         punt = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        strcpy(entID2, punt);
-        punt = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        strcpy(relID, punt);
+        relID = strtok(NULL, "\"");
+        //strcpy(relID, punt);
         delrel(relID, entID1, entID2);
+    }
+
+    if (strcmp(punt, "delent") == 0)
+    {
+        char *entID;
+        punt = strtok(NULL, " ");
+        entID = strtok(punt, "\"");
+        //strcpy(entID, punt);
+        delent(entID);
     }
 
     if (strcmp(punt, "report\n") == 0)
     {
         report();
+        //rb_inOrder(rel_rb);
     }
     return;
 }
 
 int main()
 {
-    freopen("generator_suite/i/2019_08_10_11_21_19_396.txt", "r", stdin);
-    //freopen("suite1/batch1.1.in", "r", stdin);
-    freopen("output.txt", "w", stdout);
+    //freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
+    //freopen("suite4/batch4.2.in", "r", stdin);
+    //freopen("output.txt", "w", stdout);
 
     rel_hashtable = hashtable_createTable(REL_HASH_SIZE);
 
