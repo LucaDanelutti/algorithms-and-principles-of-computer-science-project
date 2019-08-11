@@ -20,7 +20,7 @@ struct hashtable *rel_hashtable = NULL;
 struct hashtable_node
 {
     char key[REL_ID_SIZE];
-    void *val;
+    rbTree_DEST *val;
     int max;
     struct hashtable_node *next;
 };
@@ -74,7 +74,7 @@ void hashtable_insert(struct hashtable *t, char *key, void *val, int max)
     t->list[pos] = newNode;
 }
 
-rbTree_DEST *hashtable_search(struct hashtable *t, char *key)
+struct hashtable_node *hashtable_search(struct hashtable *t, char *key)
 {
     int pos = hashtable_hashFunction(t, key);
     struct hashtable_node *list = t->list[pos];
@@ -83,23 +83,7 @@ rbTree_DEST *hashtable_search(struct hashtable *t, char *key)
     {
         if (!strcmp(temp->key, key))
         {
-            return temp->val;
-        }
-        temp = temp->next;
-    }
-    return NULL;
-}
-
-int *hashtable_max_search(struct hashtable *t, char *key)
-{
-    int pos = hashtable_hashFunction(t, key);
-    struct hashtable_node *list = t->list[pos];
-    struct hashtable_node *temp = list;
-    while (temp)
-    {
-        if (!strcmp(temp->key, key))
-        {
-            return &(temp->max);
+            return temp;
         }
         temp = temp->next;
     }
@@ -839,20 +823,18 @@ void print_max(rbTree_DEST root, int max)
 
 void report_recursive2(rbTree rel_rb)
 {
-    int max;
-    rbTree_DEST *node;
+    struct hashtable_node *node;
     if (rel_rb == NIL)
         return;
     report_recursive2(rel_rb->left);
     node = hashtable_search(rel_hashtable, rel_rb->key);
-    max = *hashtable_max_search(rel_hashtable, rel_rb->key);
-    if (node != NULL && max > 0)
+    if (node != NULL && node->max > 0)
     {
         fputs("\"", stdout);
         fputs(rel_rb->key, stdout);
         fputs("\" ", stdout);
-        print_max(*node, max);
-        printf("%d", max);
+        print_max(*(node->val), node->max);
+        printf("%d", node->max);
         fputs("; ", stdout);
     }
     report_recursive2(rel_rb->right);
@@ -874,34 +856,31 @@ void addrel(char *relID, char *entID1, char *entID2)
         return;
     }
     //printf("Adding relationship %s between %s and %s\n", relID, entID1, entID2);
+    struct hashtable_node *hash_node;
     rbTree_DEST *buffer;
     rbTree_DEST rel_dest_node;
-    int *hashtable_max;
-    buffer = hashtable_search(rel_hashtable, relID);
-    if (buffer == NULL)
+    hash_node = hashtable_search(rel_hashtable, relID);
+    if (hash_node == NULL)
     {
         buffer = malloc(sizeof(void *));
         *buffer = NIL_DEST;
         hashtable_insert(rel_hashtable, relID, buffer, 0);
     }
+    hash_node = hashtable_search(rel_hashtable, relID);
     rb_insert(&rel_rb, relID);
-    rel_dest_node = rb_search_DEST(*buffer, entID2);
+    rel_dest_node = rb_search_DEST(*(hash_node->val), entID2);
     if (rel_dest_node == NIL_DEST)
     {
-        rb_insert_DEST(buffer, entID2, NIL);
-        rel_dest_node = rb_search_DEST(*buffer, entID2);
+        rb_insert_DEST(hash_node->val, entID2, NIL);
+        rel_dest_node = rb_search_DEST(*(hash_node->val), entID2);
     }
 
-    //if (rb_search(rel_dest_node->value, entID1) == NIL)
-    //{
     if (rb_insert(&(rel_dest_node->value), entID1) == 1)
     {
         rel_dest_node->count++;
-        hashtable_max = hashtable_max_search(rel_hashtable, relID);
-        if (rel_dest_node->count > *hashtable_max)
-            *hashtable_max = rel_dest_node->count;
+        if (rel_dest_node->count > hash_node->max)
+            hash_node->max = rel_dest_node->count;
     }
-    //}
     return;
 }
 
@@ -925,17 +904,19 @@ void delent_destTreeCleaner_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST re
 void delrel(char *relID, char *entID1, char *entID2)
 {
     //printf("Deleting relationship %s between %s and %s\n", relID, entID1, entID2);
+    struct hashtable_node *hash_node;
     rbTree_DEST *rel_dest_tree;
     rbTree_DEST rel_dest_node;
     if (rb_search(ent_rb, entID1) == NIL)
         return;
 
-    rel_dest_tree = hashtable_search(rel_hashtable, relID);
-    if (rel_dest_tree == NULL)
+    hash_node = hashtable_search(rel_hashtable, relID);
+    if (hash_node == NULL)
     {
         //printf("Relationship %s between %s and %s not deleted!", relID, entID1, entID2);
         return;
     }
+    rel_dest_tree = hash_node->val;
     if (*rel_dest_tree == NIL_DEST)
     {
         //printf("Relationship %s between %s and %s not deleted!", relID, entID1, entID2);
@@ -956,19 +937,18 @@ void delrel(char *relID, char *entID1, char *entID2)
 
     rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
     free(toFree);
-    int *hashtable_max = hashtable_max_search(rel_hashtable, relID);
     (rel_dest_node->count)--;
-    if ((rel_dest_node->count + 1) == *hashtable_max)
+    if ((rel_dest_node->count + 1) == hash_node->max)
     {
-        *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+        hash_node->max = rb_findMax_DEST(*rel_dest_tree);
     }
     if (rel_dest_node->count == 0)
     {
         rbNode_DEST toFree_DEST = rb_remove_DEST(rel_dest_tree, rel_dest_node);
         free(toFree_DEST);
-        *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+        hash_node->max = rb_findMax_DEST(*rel_dest_tree);
     }
-    if (*hashtable_max == -1)
+    if (hash_node->max == -1)
     {
         rb_destroy_DEST(*rel_dest_tree);
         *rel_dest_tree = NIL_DEST;
@@ -981,7 +961,7 @@ void delent_relTreeCleaner_recursive(rbTree *rel_rb, rbNode rel_node)
     if (rel_node == NIL)
         return;
     rbNode toFree;
-    if (*hashtable_max_search(rel_hashtable, rel_node->key) < 1)
+    if (hashtable_search(rel_hashtable, rel_node->key)->max < 1)
     {
         //printf("### Going to free: %s", rel_node->key);
         toFree = rb_remove(rel_rb, rel_node);
@@ -994,64 +974,62 @@ void delent_relTreeCleaner_recursive(rbTree *rel_rb, rbNode rel_node)
     return;
 }
 
-void delent_fromNodes_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest_node, char *entID, char *relID)
+void delent_DESTnodes_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest_node, char *entID, char *relID, struct hashtable_node *hash_node)
 {
     if (rel_dest_node == NIL_DEST)
         return;
-    delent_fromNodes_recursive(rel_dest_tree, rel_dest_node->left, entID, relID);
+    delent_DESTnodes_recursive(rel_dest_tree, rel_dest_node->left, entID, relID, hash_node);
 
-    rbNode rel_from_node = rb_search(rel_dest_node->value, entID);
-    if (rel_from_node != NIL)
+    if (strcmp(rel_dest_node->key, entID) == 0)
     {
-        //printf("\nDeleting from %s to %s\n", rel_from_node->key, rel_dest_node->key);
-        rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
-        free(toFree);
-        int *hashtable_max = hashtable_max_search(rel_hashtable, relID);
-        rel_dest_node->count--;
-        if (((rel_dest_node->count) + 1) == *hashtable_max)
-            *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
+        rb_destroy(rel_dest_node->value);
+        rel_dest_node->value = NIL;
+        //printf("\n###Deleting %s --RELDESTNODEVALUE: %d, HASHMAX: %d\n", entID, rel_dest_node->count, *hashtable_max);
+        if ((rel_dest_node->count) == hash_node->max)
+        {
+            rel_dest_node->count = 0;
+            hash_node->max = rb_findMax_DEST(*rel_dest_tree);
+        }
+        rel_dest_node->count = 0;
+    }
+    else
+    {
+        rbNode rel_from_node = rb_search(rel_dest_node->value, entID);
+        if (rel_from_node != NIL)
+        {
+            //printf("\nDeleting from %s to %s\n", rel_from_node->key, rel_dest_node->key);
+            rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
+            free(toFree);
+            rel_dest_node->count--;
+            if (((rel_dest_node->count) + 1) == hash_node->max)
+                hash_node->max = rb_findMax_DEST(*rel_dest_tree);
+        }
     }
 
-    delent_fromNodes_recursive(rel_dest_tree, rel_dest_node->right, entID, relID);
+    delent_DESTnodes_recursive(rel_dest_tree, rel_dest_node->right, entID, relID, hash_node);
     return;
 }
 
 void delent_recursive(rbTree rel_rb, char *entID)
 {
+    struct hashtable_node *hash_node;
     rbTree_DEST *rel_dest_tree;
     if (rel_rb == NIL)
         return;
     delent_recursive(rel_rb->left, entID);
 
-    rel_dest_tree = hashtable_search(rel_hashtable, rel_rb->key);
-    if (rel_dest_tree != NULL)
+    hash_node = hashtable_search(rel_hashtable, rel_rb->key);
+    if (hash_node != NULL)
     {
+        rel_dest_tree = hash_node->val;
         if (*rel_dest_tree != NIL_DEST)
         {
-            delent_fromNodes_recursive(rel_dest_tree, *rel_dest_tree, entID, rel_rb->key);
-            if (*hashtable_max_search(rel_hashtable, rel_rb->key) == 0)
+            delent_DESTnodes_recursive(rel_dest_tree, *rel_dest_tree, entID, rel_rb->key, hash_node);
+            if (hash_node->max == 0)
             {
                 rb_destroy_DEST(*rel_dest_tree);
                 *rel_dest_tree = NIL_DEST;
             }
-            else
-            {
-                rbNode_DEST rel_dest_node = rb_search_DEST(*rel_dest_tree, entID);
-                if (rel_dest_node != NIL_DEST)
-                {
-                    rb_destroy(rel_dest_node->value);
-                    rel_dest_node->value = NIL;
-                    int *hashtable_max = hashtable_max_search(rel_hashtable, rel_rb->key);
-                    //printf("\n###Deleting %s --RELDESTNODEVALUE: %d, HASHMAX: %d\n", entID, rel_dest_node->count, *hashtable_max);
-                    if ((rel_dest_node->count) == (*hashtable_max))
-                    {
-                        rel_dest_node->count = 0;
-                        *hashtable_max = rb_findMax_DEST(*rel_dest_tree);
-                    }
-                    rel_dest_node->count = 0;
-                }
-            }
-            //delent_destTreeCleaner_recursive(rel_dest_tree, *rel_dest_tree);
         }
     }
 
@@ -1072,7 +1050,7 @@ void delent(char *entID)
     free(toFree);
     delent_recursive(rel_rb, entID);
 
-    //delent_relTreeCleaner_recursive(&rel_rb, rel_rb);
+    delent_relTreeCleaner_recursive(&rel_rb, rel_rb);
     return;
 }
 
@@ -1097,7 +1075,6 @@ void lineParser(char *temp)
         char *entID;
         punt = strtok(NULL, " ");
         entID = strtok(punt, "\"");
-        //strcpy(entID, punt);
         addent(entID);
     }
 
@@ -1107,13 +1084,10 @@ void lineParser(char *temp)
         char *entID2;
         char *relID;
         entID1 = strtok(NULL, "\"");
-        //strcpy(entID1, punt);
         punt = strtok(NULL, "\"");
         entID2 = strtok(NULL, "\"");
-        //strcpy(entID2, punt);
         punt = strtok(NULL, "\"");
         relID = strtok(NULL, "\"");
-        //strcpy(relID, punt);
         addrel(relID, entID1, entID2);
     }
 
@@ -1123,13 +1097,10 @@ void lineParser(char *temp)
         char *entID2;
         char *relID;
         entID1 = strtok(NULL, "\"");
-        //strcpy(entID1, punt);
         punt = strtok(NULL, "\"");
         entID2 = strtok(NULL, "\"");
-        //strcpy(entID2, punt);
         punt = strtok(NULL, "\"");
         relID = strtok(NULL, "\"");
-        //strcpy(relID, punt);
         delrel(relID, entID1, entID2);
     }
 
@@ -1138,23 +1109,21 @@ void lineParser(char *temp)
         char *entID;
         punt = strtok(NULL, " ");
         entID = strtok(punt, "\"");
-        //strcpy(entID, punt);
         delent(entID);
     }
 
     if (strcmp(punt, "report\n") == 0)
     {
         report();
-        //rb_inOrder(rel_rb);
     }
     return;
 }
 
 int main()
 {
-    //freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
+    freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
     //freopen("suite4/batch4.2.in", "r", stdin);
-    //freopen("output.txt", "w", stdout);
+    freopen("output.txt", "w", stdout);
 
     rel_hashtable = hashtable_createTable(REL_HASH_SIZE);
 
