@@ -1190,22 +1190,21 @@ rbNode_RELSHIP rb_searchFrom_RELSHIP(rbTree_RELSHIP tree, char *entFromID)
     {
         return tree;
     }
-    if (strcmp(entFromID, substring) < 0)
-    {
-        return rb_searchFrom_RELSHIP(tree->left, entFromID);
-    }
+    rbNode_RELSHIP node = rb_searchFrom_RELSHIP(tree->left, entFromID);
+    if (node != NIL_RELSHIP)
+        return node;
+
     else
-    {
         return rb_searchFrom_RELSHIP(tree->right, entFromID);
-    }
 }
 
-char *rb_To_RELSHIP(rbTree_RELSHIP tree, rbNode_RELSHIP node)
+char *rb_To_RELSHIP(rbNode_RELSHIP node, char *dest)
 {
-    char relationship[REL_ID_SIZE * 2];
+    char relationship[ENT_ID_SIZE * 2];
     char *substring;
-    strcpy(relationship, tree->key);
+    strcpy(relationship, node->key);
     substring = strtok(relationship, ".");
+    strcpy(dest, substring);
     return substring;
 }
 
@@ -1308,6 +1307,7 @@ void delrel(char *relID, char *entFromID, char *entToID)
         rbNode_RELSHIP rb_relship_node = rb_search_RELSHIP(*(hash_node->relship_rb_pointer), relationship);
         if (rb_relship_node != NIL_RELSHIP)
         {
+            //printf("###Deleting %s###", rb_relship_node->key);
             rbNode_RELSHIP toFree = rb_remove_RELSHIP(hash_node->relship_rb_pointer, rb_relship_node);
             free(toFree);
             rbNode_REPORT rb_report_node = rb_search_REPORT(*(hash_node->report_rb_pointer), entToID);
@@ -1330,20 +1330,31 @@ void delent_recursive(rbTree rel_rb, char *entID)
 
     hash_node = hashtable_search(rel_hashtable, rel_rb->key);
     rb_report_node = rb_search_REPORT(*(hash_node->report_rb_pointer), entID);
-    for (; rb_report_node->count != 0; rb_report_node->count--)
+    if (rb_report_node != NIL_REPORT)
     {
-        rb_relship_node = rb_searchTo_RELSHIP(*(hash_node->relship_rb_pointer), entID);
-        toFree = rb_remove_RELSHIP(hash_node->relship_rb_pointer, rb_relship_node);
-        free(toFree);
+        for (int i = 0; i < rb_report_node->count; i++)
+        {
+            rb_relship_node = rb_searchTo_RELSHIP(*(hash_node->relship_rb_pointer), entID);
+            //printf("###Deleting %s###", rb_relship_node->key);
+            toFree = rb_remove_RELSHIP(hash_node->relship_rb_pointer, rb_relship_node);
+            free(toFree);
+        }
+        if (rb_report_node->count == hash_node->max)
+        {
+            rb_report_node->count = 0;
+            hash_node->max = rb_findMax_REPORT(*(hash_node->report_rb_pointer));
+        }
+        rb_report_node->count = 0;
     }
-    if (rb_report_node->count == hash_node->max)
-        hash_node->max = rb_findMax_REPORT(*(hash_node->report_rb_pointer));
 
     rb_relship_node = rb_searchFrom_RELSHIP(*(hash_node->relship_rb_pointer), entID);
     while (rb_relship_node != NIL_RELSHIP)
     {
-        rb_report_node = rb_search_REPORT(*(hash_node->report_rb_pointer), rb_To_RELSHIP(*(hash_node->relship_rb_pointer), rb_relship_node));
+        char relToID[ENT_ID_SIZE];
+        rb_To_RELSHIP(rb_relship_node, relToID);
+        rb_report_node = rb_search_REPORT(*(hash_node->report_rb_pointer), relToID);
         rb_report_node->count--;
+        //printf("###Deleting %s, dest: %s %d###", rb_relship_node->key, rb_report_node->key, rb_report_node->count);
         toFree = rb_remove_RELSHIP(hash_node->relship_rb_pointer, rb_relship_node);
         free(toFree);
         if (rb_report_node->count + 1 == hash_node->max)
@@ -1436,9 +1447,9 @@ void lineParser(char *temp)
 
 int main()
 {
-    //freopen("generator_suite/i/2019_08_10_11_21_21_790.txt", "r", stdin);
-    freopen("suite2/batch2.2.in", "r", stdin);
-    //freopen("output.txt", "w", stdout);
+    freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
+    //freopen("suite2/batch2.2.in", "r", stdin);
+    freopen("output.txt", "w", stdout);
 
     rel_hashtable = hashtable_createTable(REL_HASH_SIZE);
 
@@ -1449,7 +1460,8 @@ int main()
         lineParser(temp);
         fgets(temp, LINE_SIZE, stdin);
     }
-    printf("%s", rb_searchFrom_RELSHIP(*(hashtable_search(rel_hashtable, "older_than")->relship_rb_pointer), "Airiam")->key);
+    //printf("%s", rb_searchFrom_RELSHIP(*(hashtable_search(rel_hashtable, "older_than")->relship_rb_pointer), "Airiam")->key);
+    //printf("%s", rb_searchTo_RELSHIP(*(hashtable_search(rel_hashtable, "older_than")->relship_rb_pointer), "Joseph_Carey"));
     //rb_inOrder_RELSHIP(*(hashtable_search(rel_hashtable, "knows")->relship_rb_pointer));
     //printf("\n");
     //rb_inOrder_REPORT(*(hashtable_search(rel_hashtable, "knows")->report_rb_pointer));
