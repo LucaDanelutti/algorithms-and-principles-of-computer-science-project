@@ -3,6 +3,7 @@
 #include <string.h>
 
 #define REL_HASH_SIZE 50
+#define REL_HASH_SIZE_REPORT 50
 #define REL_ID_SIZE 35 //Poni uguale a ENT_ID_SIZE
 #define ENT_ID_SIZE 35
 #define LINE_SIZE 100
@@ -17,11 +18,78 @@ typedef struct rb_node_DEST *rbTree_DEST;
 
 struct hashtable *rel_hashtable = NULL;
 
+struct hashtable_node_REPORT
+{
+    int key;
+    rbTree val;
+    struct hashtable_node_REPORT *next;
+};
+
+struct hashtable_REPORT
+{
+    int size;
+    struct hashtable_node_REPORT **list;
+};
+
+struct hashtable_REPORT *hashtable_createTable_REPORT(int size)
+{
+    struct hashtable_REPORT *t = (struct hashtable_REPORT *)malloc(sizeof(struct hashtable_REPORT));
+    t->size = size;
+    t->list = (struct hashtable_node_REPORT **)malloc(sizeof(struct hashtable_node_REPORT *) * size);
+    int i;
+    for (i = 0; i < size; i++)
+        t->list[i] = NULL;
+    return t;
+}
+
+int hashtable_hashFunction_REPORT(struct hashtable_REPORT *t, int key)
+{
+    return key % REL_HASH_SIZE_REPORT;
+}
+
+void hashtable_insert_REPORT(struct hashtable_REPORT *t, int key, rbTree val)
+{
+    int pos = hashtable_hashFunction_REPORT(t, key);
+    struct hashtable_node_REPORT *list = t->list[pos];
+    struct hashtable_node_REPORT *newNode = (struct hashtable_node_REPORT *)malloc(sizeof(struct hashtable_node_REPORT));
+    struct hashtable_node_REPORT *temp = list;
+    while (temp)
+    {
+        if (temp->key == key)
+        {
+            temp->val = val;
+            return;
+        }
+        temp = temp->next;
+    }
+    newNode->key = key;
+    newNode->val = val;
+    newNode->next = list;
+    t->list[pos] = newNode;
+}
+
+struct hashtable_node_REPORT *hashtable_search_REPORT(struct hashtable_REPORT *t, int key)
+{
+    int pos = hashtable_hashFunction_REPORT(t, key);
+    struct hashtable_node_REPORT *list = t->list[pos];
+    struct hashtable_node_REPORT *temp = list;
+    while (temp)
+    {
+        if (temp->key == key)
+        {
+            return temp;
+        }
+        temp = temp->next;
+    }
+    return NULL;
+}
+
 struct hashtable_node
 {
     char key[REL_ID_SIZE];
     rbTree_DEST *val;
     int max;
+    struct hashtable_REPORT *hash_report;
     struct hashtable_node *next;
 };
 
@@ -42,28 +110,18 @@ struct hashtable *hashtable_createTable(int size)
     return t;
 }
 
-int hashtable_hashFunction2(struct hashtable *t, char *key)
-{
-    int pos = 0;
-    for (int i = 0; key[i] != '\0'; i++)
-    {
-        pos = pos + key[i];
-    }
-    return pos % REL_HASH_SIZE;
-}
-
 int hashtable_hashFunction(struct hashtable *t, char *s)
 {
     unsigned long hash = 5381;
     int c;
 
     while ((c = *s++))
-        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+        hash = ((hash << 5) + hash) + c;
 
     return hash % REL_HASH_SIZE;
 }
 
-void hashtable_insert(struct hashtable *t, char *key, void *val, int max)
+void hashtable_insert(struct hashtable *t, char *key, void *val, int max, struct hashtable_REPORT *hash_report)
 {
     int pos = hashtable_hashFunction(t, key);
     struct hashtable_node *list = t->list[pos];
@@ -81,6 +139,7 @@ void hashtable_insert(struct hashtable *t, char *key, void *val, int max)
     strcpy(newNode->key, key);
     newNode->val = val;
     newNode->max = max;
+    newNode->hash_report = hash_report;
     newNode->next = list;
     t->list[pos] = newNode;
 }
@@ -428,11 +487,6 @@ rbNode rb_remove(rbTree *tree, rbNode z)
         rb_removeFixUp(tree, x);
     }
     return y;
-}
-
-void rb_freeNode(rbNode node)
-{
-    free(node);
 }
 
 void rb_destroy(rbTree tree)
@@ -819,23 +873,15 @@ int rb_findMax_DEST(rbTree_DEST tree)
     return right;
 }
 
-void print_max(rbTree_DEST root, int max)
+void print_max2(rbTree root)
 {
-    if (root == NIL_DEST)
+    if (root == NIL)
         return;
-    print_max(root->left, max);
-    while (max > 1000)
-    {
-        fputs("AAA", stdout);
-    }
-    //printf("# %d #", root->count);
-    if (root->count == max)
-    {
-        fputs("\"", stdout);
-        fputs(root->key, stdout);
-        fputs("\" ", stdout);
-    }
-    print_max(root->right, max);
+    print_max2(root->left);
+    fputs("\"", stdout);
+    fputs(root->key, stdout);
+    fputs("\" ", stdout);
+    print_max2(root->right);
     return;
 }
 
@@ -852,7 +898,7 @@ int report_recursive2(rbTree rel_rb)
         fputs("\"", stdout);
         fputs(rel_rb->key, stdout);
         fputs("\" ", stdout);
-        print_max(*(node->val), node->max);
+        print_max2(hashtable_search_REPORT(node->hash_report, node->max)->val);
         printf("%d", node->max);
         fputs("; ", stdout);
         count++;
@@ -879,12 +925,15 @@ void addrel(char *relID, char *entID1, char *entID2)
     struct hashtable_node *hash_node;
     rbTree_DEST *buffer;
     rbTree_DEST rel_dest_node;
+    struct hashtable_REPORT *hash_report;
+    struct hashtable_node_REPORT *hash_report_node;
     hash_node = hashtable_search(rel_hashtable, relID);
     if (hash_node == NULL)
     {
         buffer = malloc(sizeof(void *));
         *buffer = NIL_DEST;
-        hashtable_insert(rel_hashtable, relID, buffer, 0);
+        hash_report = hashtable_createTable_REPORT(REL_HASH_SIZE_REPORT);
+        hashtable_insert(rel_hashtable, relID, buffer, 0, hash_report);
     }
     hash_node = hashtable_search(rel_hashtable, relID);
     rb_insert(&rel_rb, relID);
@@ -897,27 +946,24 @@ void addrel(char *relID, char *entID1, char *entID2)
 
     if (rb_insert(&(rel_dest_node->value), entID1) == 1)
     {
+        if (rel_dest_node->count > 0)
+        {
+            hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+            //printf("\nRemoving %s with %d", rel_dest_node->key, rel_dest_node->count);
+            rbNode toFree = rb_remove(&(hash_report_node->val), rb_search(hash_report_node->val, entID2));
+            free(toFree);
+        }
         rel_dest_node->count++;
+        hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+        if (hash_report_node == NULL)
+        {
+            hashtable_insert_REPORT(hash_node->hash_report, rel_dest_node->count, NIL);
+            hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+        }
+        rb_insert(&(hash_report_node->val), entID2);
         if (rel_dest_node->count > hash_node->max)
             hash_node->max = rel_dest_node->count;
     }
-    return;
-}
-
-void delent_destTreeCleaner_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest_node)
-{
-    if (rel_dest_node == NIL_DEST)
-        return;
-    rbNode_DEST toFree;
-    if (rel_dest_node->count < 1)
-    {
-        toFree = rb_remove_DEST(rel_dest_tree, rel_dest_node);
-        free(toFree);
-        delent_destTreeCleaner_recursive(rel_dest_tree, *rel_dest_tree);
-        return;
-    }
-    delent_destTreeCleaner_recursive(rel_dest_tree, rel_dest_node->left);
-    delent_destTreeCleaner_recursive(rel_dest_tree, rel_dest_node->right);
     return;
 }
 
@@ -925,6 +971,7 @@ void delrel(char *relID, char *entID1, char *entID2)
 {
     //printf("Deleting relationship %s between %s and %s\n", relID, entID1, entID2);
     struct hashtable_node *hash_node;
+    struct hashtable_node_REPORT *hash_report_node;
     rbTree_DEST *rel_dest_tree;
     rbTree_DEST rel_dest_node;
 
@@ -955,7 +1002,19 @@ void delrel(char *relID, char *entID1, char *entID2)
 
     rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
     free(toFree);
+    hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+    //printf("\nRemoving %s with %d", rel_dest_node->key, rel_dest_node->count);
+    toFree = rb_remove(&(hash_report_node->val), rb_search(hash_report_node->val, entID2));
+    free(toFree);
     (rel_dest_node->count)--;
+    hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+    if (hash_report_node == NULL)
+    {
+        hashtable_insert_REPORT(hash_node->hash_report, rel_dest_node->count, NIL);
+        hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+    }
+    //printf("\nAdding %s with %d", rel_dest_node->key, rel_dest_node->count);
+    rb_insert(&(hash_report_node->val), entID2);
     if ((rel_dest_node->count + 1) == hash_node->max)
     {
         hash_node->max = rb_findMax_DEST(*rel_dest_tree);
@@ -974,35 +1033,25 @@ void delrel(char *relID, char *entID1, char *entID2)
     return;
 }
 
-void delent_relTreeCleaner_recursive(rbTree *rel_rb, rbNode rel_node)
-{
-    if (rel_node == NIL)
-        return;
-    rbNode toFree;
-    if (hashtable_search(rel_hashtable, rel_node->key)->max < 1)
-    {
-        //printf("### Going to free: %s", rel_node->key);
-        toFree = rb_remove(rel_rb, rel_node);
-        free(toFree);
-        delent_relTreeCleaner_recursive(rel_rb, *rel_rb);
-        return;
-    }
-    delent_relTreeCleaner_recursive(rel_rb, rel_node->left);
-    delent_relTreeCleaner_recursive(rel_rb, rel_node->right);
-    return;
-}
-
 void delent_DESTnodes_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest_node, char *entID, char *relID, struct hashtable_node *hash_node)
 {
     if (rel_dest_node == NIL_DEST)
         return;
     delent_DESTnodes_recursive(rel_dest_tree, rel_dest_node->left, entID, relID, hash_node);
 
+    struct hashtable_node_REPORT *hash_report_node;
     if (strcmp(rel_dest_node->key, entID) == 0)
     {
         rb_destroy(rel_dest_node->value);
         rel_dest_node->value = NIL;
-        //printf("\n###Deleting %s --RELDESTNODEVALUE: %d, HASHMAX: %d\n", entID, rel_dest_node->count, *hashtable_max);
+        //printf("\n###Deleting %s --RELDESTNODEVALUE: %d\n", entID, rel_dest_node->count);
+        if (rel_dest_node->count > 0)
+        {
+            hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+            //printf("\nRemoving %s with %d", rel_dest_node->key, rel_dest_node->count);
+            rbNode toFree = rb_remove(&(hash_report_node->val), rb_search(hash_report_node->val, rel_dest_node->key));
+            free(toFree);
+        }
         if ((rel_dest_node->count) == hash_node->max)
         {
             rel_dest_node->count = 0;
@@ -1018,7 +1067,23 @@ void delent_DESTnodes_recursive(rbTree_DEST *rel_dest_tree, rbNode_DEST rel_dest
             //printf("\nDeleting from %s to %s\n", rel_from_node->key, rel_dest_node->key);
             rbNode toFree = rb_remove(&(rel_dest_node->value), rel_from_node);
             free(toFree);
+            hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+            //printf("\nRemoving %s with %d", rel_dest_node->key, rel_dest_node->count);
+            toFree = rb_remove(&(hash_report_node->val), rb_search(hash_report_node->val, rel_dest_node->key));
+            free(toFree);
             rel_dest_node->count--;
+            if (rel_dest_node->count > 0)
+            {
+                hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+                if (hash_report_node == NULL)
+                {
+                    hashtable_insert_REPORT(hash_node->hash_report, rel_dest_node->count, NIL);
+                    hash_report_node = hashtable_search_REPORT(hash_node->hash_report, rel_dest_node->count);
+                }
+                //printf("\nAdding %s with %d", rel_dest_node->key, rel_dest_node->count);
+                rb_insert(&(hash_report_node->val), rel_dest_node->key);
+            }
+
             if (((rel_dest_node->count) + 1) == hash_node->max)
                 hash_node->max = rb_findMax_DEST(*rel_dest_tree);
         }
@@ -1068,7 +1133,6 @@ void delent(char *entID)
     free(toFree);
     delent_recursive(rel_rb, entID);
 
-    //delent_relTreeCleaner_recursive(&rel_rb, rel_rb);
     return;
 }
 
@@ -1125,7 +1189,7 @@ void lineParser(char *temp)
 
     if (strcmp(punt, "report\n") == 0)
     {
-        //report();
+        report();
     }
     return;
 }
@@ -1133,7 +1197,7 @@ void lineParser(char *temp)
 int main()
 {
     //freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
-    //freopen("suite4/batch4.2.in", "r", stdin);
+    //freopen("suite4/batch4.1.in", "r", stdin);
     //freopen("output.txt", "w", stdout);
 
     rel_hashtable = hashtable_createTable(REL_HASH_SIZE);
