@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define REL_HASH_SIZE 20
+#define REL_HASH_SIZE 50
 #define REL_ID_SIZE 35 //Poni uguale a ENT_ID_SIZE
 #define ENT_ID_SIZE 35
 #define LINE_SIZE 100
@@ -42,14 +42,25 @@ struct hashtable *hashtable_createTable(int size)
     return t;
 }
 
-int hashtable_hashFunction(struct hashtable *t, char *key)
+int hashtable_hashFunction2(struct hashtable *t, char *key)
 {
     int pos = 0;
-    for (int i = 0; i < REL_ID_SIZE && key[i] != '\0'; i++)
+    for (int i = 0; key[i] != '\0'; i++)
     {
         pos = pos + key[i];
     }
     return pos % REL_HASH_SIZE;
+}
+
+int hashtable_hashFunction(struct hashtable *t, char *s)
+{
+    unsigned long hash = 5381;
+    int c;
+
+    while ((c = *s++))
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+
+    return hash % REL_HASH_SIZE;
 }
 
 void hashtable_insert(struct hashtable *t, char *key, void *val, int max)
@@ -262,16 +273,13 @@ int rb_insert(rbTree *tree, char *k)
 {
     rbNode y = NIL;
     rbNode x = *tree;
-    rbNode z = (struct rb_node *)malloc(sizeof(struct rb_node));
-    strcpy(z->key, k);
-    z->parent = z->left = z->right = NIL;
 
     while (x != NIL)
     {
         y = x;
-        if (strcmp(z->key, x->key) == 0)
+        if (strcmp(k, x->key) == 0)
             return 0;
-        if (strcmp(z->key, x->key) < 0)
+        if (strcmp(k, x->key) < 0)
         {
             x = x->left;
         }
@@ -280,6 +288,11 @@ int rb_insert(rbTree *tree, char *k)
             x = x->right;
         }
     }
+
+    rbNode z = (struct rb_node *)malloc(sizeof(struct rb_node));
+    strcpy(z->key, k);
+    z->parent = z->left = z->right = NIL;
+
     z->parent = y;
     if (y == NIL)
     {
@@ -808,9 +821,13 @@ int rb_findMax_DEST(rbTree_DEST tree)
 
 void print_max(rbTree_DEST root, int max)
 {
-    if (root == NULL)
+    if (root == NIL_DEST)
         return;
     print_max(root->left, max);
+    while (max > 1000)
+    {
+        fputs("AAA", stdout);
+    }
     //printf("# %d #", root->count);
     if (root->count == max)
     {
@@ -819,14 +836,16 @@ void print_max(rbTree_DEST root, int max)
         fputs("\" ", stdout);
     }
     print_max(root->right, max);
+    return;
 }
 
-void report_recursive2(rbTree rel_rb)
+int report_recursive2(rbTree rel_rb)
 {
+    int count = 0;
     struct hashtable_node *node;
     if (rel_rb == NIL)
-        return;
-    report_recursive2(rel_rb->left);
+        return count;
+    count = count + report_recursive2(rel_rb->left);
     node = hashtable_search(rel_hashtable, rel_rb->key);
     if (node != NULL && node->max > 0)
     {
@@ -836,9 +855,10 @@ void report_recursive2(rbTree rel_rb)
         print_max(*(node->val), node->max);
         printf("%d", node->max);
         fputs("; ", stdout);
+        count++;
     }
-    report_recursive2(rel_rb->right);
-    return;
+    count = count + report_recursive2(rel_rb->right);
+    return count;
 }
 
 void addent(char *entID)
@@ -907,8 +927,6 @@ void delrel(char *relID, char *entID1, char *entID2)
     struct hashtable_node *hash_node;
     rbTree_DEST *rel_dest_tree;
     rbTree_DEST rel_dest_node;
-    if (rb_search(ent_rb, entID1) == NIL)
-        return;
 
     hash_node = hashtable_search(rel_hashtable, relID);
     if (hash_node == NULL)
@@ -1050,18 +1068,17 @@ void delent(char *entID)
     free(toFree);
     delent_recursive(rel_rb, entID);
 
-    delent_relTreeCleaner_recursive(&rel_rb, rel_rb);
+    //delent_relTreeCleaner_recursive(&rel_rb, rel_rb);
     return;
 }
 
 void report()
 {
-    if (rel_rb == NIL)
+    if (report_recursive2(rel_rb) == 0)
     {
         fputs("none\n", stdout);
         return;
     }
-    report_recursive2(rel_rb);
     fputs("\n", stdout);
 }
 
@@ -1073,8 +1090,7 @@ void lineParser(char *temp)
     if (strcmp(punt, "addent") == 0)
     {
         char *entID;
-        punt = strtok(NULL, " ");
-        entID = strtok(punt, "\"");
+        entID = strtok(NULL, " \"");
         addent(entID);
     }
 
@@ -1084,10 +1100,8 @@ void lineParser(char *temp)
         char *entID2;
         char *relID;
         entID1 = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        entID2 = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        relID = strtok(NULL, "\"");
+        entID2 = strtok(NULL, " \"");
+        relID = strtok(NULL, " \"");
         addrel(relID, entID1, entID2);
     }
 
@@ -1097,33 +1111,30 @@ void lineParser(char *temp)
         char *entID2;
         char *relID;
         entID1 = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        entID2 = strtok(NULL, "\"");
-        punt = strtok(NULL, "\"");
-        relID = strtok(NULL, "\"");
+        entID2 = strtok(NULL, " \"");
+        relID = strtok(NULL, " \"");
         delrel(relID, entID1, entID2);
     }
 
     if (strcmp(punt, "delent") == 0)
     {
         char *entID;
-        punt = strtok(NULL, " ");
-        entID = strtok(punt, "\"");
+        entID = strtok(NULL, " \"");
         delent(entID);
     }
 
     if (strcmp(punt, "report\n") == 0)
     {
-        report();
+        //report();
     }
     return;
 }
 
 int main()
 {
-    freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
+    //freopen("generator_suite/i_bis/2019_08_10_22_20_11_302.txt", "r", stdin);
     //freopen("suite4/batch4.2.in", "r", stdin);
-    freopen("output.txt", "w", stdout);
+    //freopen("output.txt", "w", stdout);
 
     rel_hashtable = hashtable_createTable(REL_HASH_SIZE);
 
